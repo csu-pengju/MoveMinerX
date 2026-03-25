@@ -1,0 +1,36 @@
+
+
+#用于：实验复现、 CLI运行以及论文参数记录
+
+general:
+  verbose: true
+  random_seed: 42
+
+data:
+  input_path: null
+  format: csv
+
+preprocessing:
+  enabled: true
+  steps:
+    - cleaning
+    - interpolation
+
+spatial:
+  distance_metric: euclidean
+
+mining:
+  method: convoy
+  params:
+    epsilon: 50
+    min_pts: 3
+    min_duration: 5
+
+evaluation:
+  enabled: true
+  metrics:
+    - pattern_count
+
+output:
+  save_path: ./results/
+  save_format: json
