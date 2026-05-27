@@ -18,3 +18,4 @@ class MovingPoint(BaseData):
 
     def to_tuple(self):
         return (self.x, self.y, self.t)
+
