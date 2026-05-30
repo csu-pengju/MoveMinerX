@@ -78,7 +78,7 @@ class FlowReader:
                      dest_cols: Tuple[str, str] = ('dest_x', 'dest_y'),
                      id_col: Optional[str] = None,
                      time_origin_col: Optional[str] = None,
-                     time_dest_col: Optional[str] = None) -> List[Flow]:
+                     time_dest_col: Optional[str] = None) -> (List[Flow], List[List]):
 
         """
         Convert Shapefile or DataFrame to Flow objects
@@ -111,11 +111,11 @@ class FlowReader:
     def _geodataframe_to_flows(self, gdf: 'gpd.GeoDataFrame',
                                id_col: Optional[str] = None,
                                time_origin_col: Optional[str] = None,
-                               time_dest_col: Optional[str] = None) -> List[Flow]:
+                               time_dest_col: Optional[str] = None) -> (List[Flow], List[List]):
 
         """Convert GeoDataFrame with line geometries to flows"""
         flows = []
-        true_clusters = []
+        true_clusters = {}
         for idx, row in gdf.iterrows():
             geom = row.geometry
             # Extract origin and destination from line geometry
@@ -124,6 +124,7 @@ class FlowReader:
                 if len(coords) >= 2:
                     origin = (coords[0][0], coords[0][1])
                     destination = (coords[-1][0], coords[-1][1])
+
                 else:
                     warnings.warn(f"Line at index {idx} has insufficient coordinates, skipping")
                     continue
@@ -141,7 +142,10 @@ class FlowReader:
                 flow_id = row[id_col]
             else:
                 flow_id = idx
-
+            if row.IDX in true_clusters:
+                true_clusters[row.IDX].append(flow_id)
+            else:
+                true_clusters[row.IDX] = [flow_id]
             # Get timestamps
             time_origin = None
             time_dest = None
@@ -168,7 +172,7 @@ class FlowReader:
             # true_clusters.append(fow)
 
         self.flows = flows
-        return flows
+        return flows, list(true_clusters.values())
 
     def _parse_timestamp(self, value) -> Optional[float]:
         """Parse timestamp to numeric value"""
@@ -191,7 +195,6 @@ class FlowReader:
                     return None
 
         return None
-
 
 
 class SDBC:
@@ -276,7 +279,7 @@ class SDBC:
 
         return self.significant_clusters
 
-    def _build_neighborhoods(self):
+    def _build_neighborhoods(self, dist_mode=2):
         """Build spatial neighborhoods based on spatial proximity, temporal similarity, and directional similarity"""
         n = len(self.flows)
         self.neighborhoods = [set() for _ in range(n)]
@@ -300,7 +303,14 @@ class SDBC:
 
                 # Check spatial proximity: destination of flow_j within buffer of flow_i's destination
                 dest_dist = np.linalg.norm(np.array(flow_j.destination) - np.array(flow_i.destination))
+                origin_dist = np.linalg.norm(np.array(flow_j.origin) - np.array(flow_i.origin))
+                if dist_mode == 1:
+                    spatial_dist = np.sqrt(max(dest_dist, origin_dist))
+                else:
+                    # dist_mode == 2:
+                    spatial_dist = (np.sqrt(dest_dist) + np.sqrt(origin_dist)) / 2
 
+                print(spatial_dist)
                 if dest_dist <= self.R:
                     # Check directional similarity
                     angle = flow_i.angle_to(flow_j)
@@ -859,27 +869,27 @@ if __name__ == "__main__":
         ((150, 500), (250, 600), 50),  # Cluster 3: 50 flows
     ]
 
-    all_flows = []
-    true_clusters = []
-    flow_id = 0
+    # all_flows = []
+    # true_clusters = []
+    # flow_id = 0
 
-    for cluster_idx, (origin_center, dest_center, size) in enumerate(clusters):
-        cluster_flows = []
-        for _ in range(size):
-            origin = (origin_center[0] + np.random.randn() * 30,
-                      origin_center[1] + np.random.randn() * 30)
-            dest = (dest_center[0] + np.random.randn() * 30,
-                    dest_center[1] + np.random.randn() * 30)
-            flow = Flow(flow_id=flow_id, origin=origin, destination=dest)
-            all_flows.append(flow)
-            cluster_flows.append(flow_id)
-            flow_id += 1
-        true_clusters.append(set(cluster_flows))
+    # for cluster_idx, (origin_center, dest_center, size) in enumerate(clusters):
+    #     cluster_flows = []
+    #     for _ in range(size):
+    #         origin = (origin_center[0] + np.random.randn() * 30,
+    #                   origin_center[1] + np.random.randn() * 30)
+    #         dest = (dest_center[0] + np.random.randn() * 30,
+    #                 dest_center[1] + np.random.randn() * 30)
+    #         flow = Flow(flow_id=flow_id, origin=origin, destination=dest)
+    #         all_flows.append(flow)
+    #         cluster_flows.append(flow_id)
+    #         flow_id += 1
+    #     true_clusters.append(set(cluster_flows))
 
     flow_shp = read_shapefile(rf'E:\OneDrive\成果\01-论文\21-运动模式挖掘工具箱\datasets\aggreation patterns\FD7.shp')
     flowReader = FlowReader()
     all_flows, true_clusters = flowReader.shp_to_flows(flow_df=flow_shp, origin_cols=('ox', 'oy'), dest_cols=('dx', 'dy'), id_col='oid')
-    print(all_flows)
+    # print(all_flows)
 
     # Add noise flows
     # n_noise = 50
@@ -922,12 +932,12 @@ if __name__ == "__main__":
     print("=" * 60)
 
     # For demonstration, use a subset of data
-    # sample_flows = all_flows[:200]
-    #
+    sample_flows = all_flows[:200]
+
     # try:
     #     optimal_R, optimal_theta = RDVParameterEstimator.estimate_optimal_parameters(
     #         sample_flows,
-    #         R_range=(80, 150),
+    #         R_range=(80, 600),
     #         theta_range=(10, 40),
     #         R_step=10,
     #         theta_step=5
